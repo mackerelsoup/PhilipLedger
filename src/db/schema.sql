@@ -28,10 +28,17 @@ BEGIN SELECT RAISE(ABORT, 'transactions are immutable'); END;
 CREATE TRIGGER transactions_no_delete BEFORE DELETE ON transactions
 BEGIN SELECT RAISE(ABORT, 'transactions are immutable'); END;
 
--- One per session (ADR-0006). Session linkage and lifecycle land with the pending module (build step 3).
+CREATE TABLE sessions (
+  id         TEXT PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES accounts(id),
+  created_at TEXT NOT NULL
+);
+
+-- One per session (ADR-0006): UNIQUE session_id, nullable so ops can exist without a session (confirm tests).
 -- Deleted on confirm, reject or expiry; the executed result lives on transactions via idempotency_key.
 CREATE TABLE pending_operations (
   id            TEXT PRIMARY KEY,
+  session_id    TEXT UNIQUE REFERENCES sessions(id),
   account_id    INTEGER NOT NULL REFERENCES accounts(id),
   to_account_id INTEGER NOT NULL REFERENCES accounts(id),
   amount_cents  INTEGER NOT NULL,
