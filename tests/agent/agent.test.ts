@@ -52,6 +52,13 @@ describe("tools", () => {
     expect((found.data.candidates as { username: string }[]).map((c) => c.username)).toEqual(["bob"]); // excludes self, case-insensitive
   });
 
+  it("list_accounts returns everyone but the caller", () => {
+    const { ctx } = setup();
+    const r = runTool(ctx, "list_accounts", "{}").result;
+    if (!r.ok) throw new Error("list_accounts failed");
+    expect((r.data.accounts as { username: string }[]).map((a) => a.username)).toEqual(["alan", "bob"]);
+  });
+
   it("history rows name the counterparty", () => {
     const { db, ctx } = setup();
     db.prepare("INSERT INTO transactions (from_account_id, to_account_id, amount_cents, idempotency_key) VALUES (1, 2, 100, 'a'), (3, 1, 200, 'b')").run();

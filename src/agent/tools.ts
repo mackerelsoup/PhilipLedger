@@ -51,6 +51,11 @@ const TOOLS = {
         })),
       }),
   },
+  list_accounts: {
+    description: "List every account the user can send money to (everyone except themselves).",
+    args: z.object({}).strict(),
+    run: (c: ToolContext) => success({ accounts: findAccounts(c.db, "", c.accountId) }),
+  },
   find_account: {
     description:
       "Find recipient accounts by (part of) a username. Returns all candidates; if more than one, ask the user to choose.",

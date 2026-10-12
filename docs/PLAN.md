@@ -25,7 +25,7 @@ tests/           mirrors src/
 | `transactions` | immutable transaction rows, `getHistory()`, idempotency lookup | update or delete rows |
 | `pending` | one pending op per session, 5-minute expiry, `collecting` / `awaiting_confirmation` | move money |
 | `auth` | username/password check, session ids | touch accounts |
-| `agent` | the four tools (`get_balance`, `get_history`, `find_account`, `propose_transfer`), model calls, 3x retry, one re-prompt on invalid tool call | import `ledger.transfer`. It can only reach `pending.propose()` and the read functions |
+| `agent` | the five tools (`get_balance`, `get_history`, `list_accounts`, `find_account`, `propose_transfer`), model calls, 3x retry, one re-prompt on invalid tool call | import `ledger.transfer`. It can only reach `pending.propose()` and the read functions |
 | `api` | routing and request validation. Confirm/reject routes are the only callers of `ledger.transfer` | accept free text on confirm/reject |
 | `ui` | rendering, buttons | hold business logic |
 
