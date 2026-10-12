@@ -10,6 +10,7 @@ export interface ToolContext {
   accountId: number;
 }
 
+const sgd = (cents: number) => `${cents < 0 ? "-" : ""}SGD ${(Math.abs(cents) / 100).toFixed(2)}`;
 const Id = z.number().int().positive();
 
 /** Every tool returns this same envelope: exactly one of `data` / `error` is non-null. */
@@ -25,7 +26,10 @@ const TOOLS = {
   get_balance: {
     description: "Get the user's own account balance in cents.",
     args: z.object({}).strict(),
-    run: (c: ToolContext) => success({ balanceCents: getBalance(c.db, c.accountId) }),
+    run: (c: ToolContext) => {
+      const balanceCents = getBalance(c.db, c.accountId) ?? 0;
+      return success({ balanceCents, balance: sgd(balanceCents) });
+    },
   },
   get_history: {
     description: "Get the user's recent transactions, newest first.",
@@ -34,6 +38,7 @@ const TOOLS = {
       success({
         transactions: getHistory(c.db, c.accountId, a.limit ?? 10).map((t) => ({
           ...t,
+          amount: sgd(t.amountCents),
           direction: t.fromAccountId === c.accountId ? "sent" : "received",
         })),
       }),

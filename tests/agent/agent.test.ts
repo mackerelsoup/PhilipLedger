@@ -45,7 +45,7 @@ function deps(script: (Response | Error)[]) {
 describe("tools", () => {
   it("balance, history and find_account read only", () => {
     const { ctx } = setup();
-    expect(runTool(ctx, "get_balance", "{}").result).toEqual({ ok: true, data: { balanceCents: 100_000 }, error: null });
+    expect(runTool(ctx, "get_balance", "{}").result).toEqual({ ok: true, data: { balanceCents: 100_000, balance: "SGD 1000.00" }, error: null });
     expect(runTool(ctx, "get_history", "{}").result).toMatchObject({ ok: true, data: { transactions: [] } });
     const found = runTool(ctx, "find_account", '{"query":"B"}').result;
     if (!found.ok) throw new Error("find_account failed");
