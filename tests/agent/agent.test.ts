@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { chat, type LlmDeps } from "../../src/agent/llm.js";
 import { runTool, type ToolContext } from "../../src/agent/tools.js";
 import { login } from "../../src/auth/index.js";
@@ -47,8 +47,9 @@ describe("tools", () => {
     const { ctx } = setup();
     expect(runTool(ctx, "get_balance", "{}").result).toEqual({ ok: true, data: { balanceCents: 100_000 }, error: null });
     expect(runTool(ctx, "get_history", "{}").result).toMatchObject({ ok: true, data: { transactions: [] } });
-    const found = runTool(ctx, "find_account", '{"query":"B"}').result as unknown as { data: { candidates: { username: string }[] } };
-    expect(found.data.candidates.map((c) => c.username)).toEqual(["bob"]); // excludes self, case-insensitive
+    const found = runTool(ctx, "find_account", '{"query":"B"}').result;
+    if (!found.ok) throw new Error("find_account failed");
+    expect((found.data.candidates as { username: string }[]).map((c) => c.username)).toEqual(["bob"]); // excludes self, case-insensitive
   });
 
   it("propose_transfer only writes the pending row", () => {
@@ -74,6 +75,24 @@ describe("tools", () => {
     expect(r.invalid).toBe(true);
     expect(r.result.ok).toBe(false);
     expect(getActive(db, ctx.sessionId)).toBeUndefined();
+  });
+
+  it("validation failures use the {code, detail} envelope", () => {
+    const { ctx } = setup();
+    expect(runTool(ctx, "nope", "{}").result).toEqual({ ok: false, data: null, error: { code: "unknown_tool", detail: null } });
+    const r = runTool(ctx, "propose_transfer", '{"toAccountId":2}').result;
+    expect(r).toMatchObject({ ok: false, data: null, error: { code: "invalid_arguments" } });
+    expect(typeof (r as { error: { detail: unknown } }).error.detail).toBe("string");
+  });
+
+  it("a throwing tool becomes internal_error, is logged, and is not an invalid call", () => {
+    const { db, ctx } = setup();
+    db.exec("DROP TABLE pending_operations");
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = runTool(ctx, "propose_transfer", '{"toAccountId":2,"amountCents":5}');
+    expect(r).toEqual({ result: { ok: false, data: null, error: { code: "internal_error", detail: null } }, invalid: false });
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it("business errors are explained, not flagged invalid", () => {
@@ -134,6 +153,21 @@ describe("chat", () => {
     const abandoned = deps([bad(), bad()]);
     expect(await chat(abandoned.d, ctx, "send bob money")).toEqual({ ok: false, reason: "invalid_tool_call" });
     expect(getActive(db, ctx.sessionId)).toBeUndefined();
+  });
+
+  it("a failed turn undoes a proposal made earlier in that turn; the model sees the envelope", async () => {
+    const { db, ctx } = setup();
+    const sent: string[] = [];
+    const g = deps([
+      reply({ tool_calls: [call("propose_transfer", { toAccountId: 2, amountCents: 1000 })] }),
+      new Error("net"), new Error("net"), new Error("net"),
+    ]);
+    const orig = g.d.fetch!;
+    g.d.fetch = (async (...a: Parameters<typeof fetch>) => (sent.push(String(a[1]?.body)), orig(...a))) as typeof fetch;
+    expect(await chat(g.d, ctx, "send bob 10")).toEqual({ ok: false, reason: "llm_unavailable" });
+    expect(getActive(db, ctx.sessionId)).toBeUndefined();
+    expect(sent[1]).toContain(String.raw`\"data\":{`); // tool result as the model receives it
+    expect(sent[1]).toContain(String.raw`\"error\":null`);
   });
 
   it("stops a model that never finishes", async () => {
