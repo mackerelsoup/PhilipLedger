@@ -45,16 +45,16 @@ function deps(script: (Response | Error)[]) {
 describe("tools", () => {
   it("balance, history and find_account read only", () => {
     const { ctx } = setup();
-    expect(runTool(ctx, "get_balance", "{}").result).toEqual({ ok: true, balanceCents: 100_000 });
-    expect(runTool(ctx, "get_history", "{}").result).toMatchObject({ ok: true, transactions: [] });
-    const found = runTool(ctx, "find_account", '{"query":"B"}').result as unknown as { candidates: { username: string }[] };
-    expect(found.candidates.map((c) => c.username)).toEqual(["bob"]); // excludes self, case-insensitive
+    expect(runTool(ctx, "get_balance", "{}").result).toEqual({ ok: true, data: { balanceCents: 100_000 }, error: null });
+    expect(runTool(ctx, "get_history", "{}").result).toMatchObject({ ok: true, data: { transactions: [] } });
+    const found = runTool(ctx, "find_account", '{"query":"B"}').result as unknown as { data: { candidates: { username: string }[] } };
+    expect(found.data.candidates.map((c) => c.username)).toEqual(["bob"]); // excludes self, case-insensitive
   });
 
   it("propose_transfer only writes the pending row", () => {
     const { db, ctx } = setup();
     const { result } = runTool(ctx, "propose_transfer", '{"toAccountId":2,"amountCents":500}');
-    expect(result).toMatchObject({ ok: true, status: "awaiting_user_confirmation" });
+    expect(result).toMatchObject({ ok: true, data: { status: "awaiting_user_confirmation" }, error: null });
     expect(getActive(db, ctx.sessionId)).toMatchObject({ toAccountId: 2, amountCents: 500 });
     expect(getBalance(db, 1)).toBe(100_000);
     expect(getBalance(db, 2)).toBe(100_000);
@@ -79,12 +79,13 @@ describe("tools", () => {
   it("business errors are explained, not flagged invalid", () => {
     const { ctx } = setup();
     expect(runTool(ctx, "propose_transfer", '{"toAccountId":1,"amountCents":5}')).toEqual({
-      result: { ok: false, error: "same_account" },
+      result: { ok: false, data: null, error: { code: "same_account", detail: null } },
       invalid: false,
     });
     expect(runTool(ctx, "propose_transfer", '{"toAccountId":99,"amountCents":5}').result).toEqual({
       ok: false,
-      error: "unknown_account",
+      data: null,
+      error: { code: "unknown_account", detail: null },
     });
   });
 });
