@@ -86,7 +86,8 @@ export function runTool(c: ToolContext, name: string, rawArgs: string): { result
   if (!parsed.success) return bad("invalid_arguments", z.prettifyError(parsed.error));
   try {
     return { result: (tool.run as (c: ToolContext, a: unknown) => ToolResult)(c, parsed.data), invalid: false };
-  } catch {
+  } catch (e) {
+    console.error(`tool ${name} failed`, e);
     return { result: failure("internal_error"), invalid: false };
   }
 }

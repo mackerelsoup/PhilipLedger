@@ -1,3 +1,4 @@
+import { cancel } from "../pending/index.js";
 import type { ToolContext } from "./tools.js";
 import { runTool, toolDefinitions } from "./tools.js";
 
@@ -18,7 +19,8 @@ export type ChatResult =
 
 const SYSTEM = `You are a ledger assistant for one user. You can check their balance, show history, find recipients and propose transfers.
 You cannot move money: propose_transfer only creates a request the user must confirm with the Confirm button. Never claim a transfer is done.
-Never guess a recipient: call find_account, and if there is more than one candidate list them and ask the user to choose. Ask for any missing amount or recipient. Amounts are SGD; tool amounts are integer cents.`;
+Never guess a recipient: call find_account, and if there is more than one candidate list them and ask the user to choose. Ask for any missing amount or recipient. Amounts are SGD; tool amounts are integer cents.
+Every tool returns {ok, data, error}. On success read the fields under data; on failure error.code says why (e.g. same_account, unknown_account) and you should explain it plainly.`;
 
 const MAX_ATTEMPTS = 3;
 const MAX_STEPS = 6;
@@ -66,6 +68,12 @@ export async function chat(
 ): Promise<ChatResult> {
   const messages: Message[] = [...history, { role: "user", content: text }];
   let invalids = 0;
+  let proposed: string | undefined;
+  // A failed turn changes nothing (ADR-0005): undo a proposal made earlier in the same turn.
+  const fail = (reason: Extract<ChatResult, { ok: false }>["reason"]): ChatResult => {
+    if (proposed) cancel(ctx.db, proposed);
+    return { ok: false, reason };
+  };
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
       const msg = await complete(d, [{ role: "system", content: SYSTEM }, ...messages]);
@@ -73,13 +81,14 @@ export async function chat(
       if (!msg.tool_calls?.length) return { ok: true, reply: msg.content ?? "", history: messages };
       for (const call of msg.tool_calls) {
         const { result, invalid } = runTool(ctx, call.function.name, call.function.arguments);
-        if (invalid && ++invalids > 1) return { ok: false, reason: "invalid_tool_call" };
+        if (result.ok && typeof result.data.pendingId === "string") proposed = result.data.pendingId;
+        if (invalid && ++invalids > 1) return fail("invalid_tool_call");
         messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
       }
     }
-    return { ok: false, reason: "too_many_steps" };
+    return fail("too_many_steps");
   } catch (e) {
-    if (e instanceof Fail) return { ok: false, reason: e.reason };
+    if (e instanceof Fail) return fail(e.reason);
     throw e;
   }
 }

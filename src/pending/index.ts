@@ -43,3 +43,8 @@ export function getActive(db: Db, sessionId: string, now = new Date()): Pending 
   }
   return p;
 }
+
+/** Drops a pending op by id (used to undo a proposal when the turn that made it fails). */
+export function cancel(db: Db, id: string): void {
+  db.prepare("DELETE FROM pending_operations WHERE id = ?").run(id);
+}
