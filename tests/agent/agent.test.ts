@@ -52,6 +52,14 @@ describe("tools", () => {
     expect((found.data.candidates as { username: string }[]).map((c) => c.username)).toEqual(["bob"]); // excludes self, case-insensitive
   });
 
+  it("history timestamps are shown in Singapore time", () => {
+    const { db, ctx } = setup();
+    db.prepare("INSERT INTO transactions (from_account_id, to_account_id, amount_cents, idempotency_key, created_at) VALUES (1, 2, 100, 'k', '2026-01-01T16:30:00.000Z')").run();
+    const r = runTool(ctx, "get_history", "{}").result;
+    if (!r.ok) throw new Error("history failed");
+    expect((r.data.transactions as { createdAt: string }[])[0]!.createdAt).toBe("2 Jan 2026, 12:30 am SGT");
+  });
+
   it("propose_transfer only writes the pending row", () => {
     const { db, ctx } = setup();
     const { result } = runTool(ctx, "propose_transfer", '{"toAccountId":2,"amountCents":500}');

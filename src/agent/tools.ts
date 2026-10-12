@@ -11,6 +11,12 @@ export interface ToolContext {
 }
 
 const sgd = (cents: number) => `${cents < 0 ? "-" : ""}SGD ${(Math.abs(cents) / 100).toFixed(2)}`;
+const sgt = new Intl.DateTimeFormat("en-SG", {
+  timeZone: "Asia/Singapore", year: "numeric", month: "short", day: "numeric",
+  hour: "numeric", minute: "2-digit", hour12: true,
+});
+/** Stored timestamps are UTC ISO strings; the model only ever sees Singapore time. */
+const toSgt = (iso: string) => `${sgt.format(new Date(iso))} SGT`;
 const Id = z.number().int().positive();
 
 /** Every tool returns this same envelope: exactly one of `data` / `error` is non-null. */
@@ -38,6 +44,7 @@ const TOOLS = {
       success({
         transactions: getHistory(c.db, c.accountId, a.limit ?? 10).map((t) => ({
           ...t,
+          createdAt: toSgt(t.createdAt),
           amount: sgd(t.amountCents),
           direction: t.fromAccountId === c.accountId ? "sent" : "received",
         })),
