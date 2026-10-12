@@ -33,7 +33,11 @@ Dependency direction: `ui -> api -> {agent, auth, pending, ledger, transactions}
 
 ## Build order
 
-1. **`db`, `ledger`, `transactions`.** Schema with `CHECK (balance >= 0)`, `transfer()`, seed data.
+1. **`db`, `ledger`, `transactions`.** Schema with `CHECK (balance >= 0)`, `transfer()`, seed data. **Done** (`5fb3e66`, 18 tests).
+   - Seed: alice, bob, alan, each 100,000 cents (SGD 1,000.00), demo password `demo1234`, scrypt-hashed.
+   - Idempotency record is the `UNIQUE idempotency_key` column on `transactions`, not a separate table. Failed transfers leave no record. A replay returns the original transaction (`replayed: true`) even if its fields differ.
+   - `transactions` is append-only, enforced by DB triggers as well as the module API.
+   - `transfer()` returns `{ ok: false, reason }` for `invalid_amount`, `same_account`, `unknown_account`, `insufficient_funds`.
 2. **`api` confirm and reject.** Call `transfer()` with the pending id as the idempotency key. Tests: double-confirm, insufficient funds, expired pending op.
 3. **`auth` and `pending`.** Login against seeded users, replace-on-new-request, expiry.
 4. **`agent` tools.** Plain functions with zod validation. `propose_transfer` only writes the pending row.
