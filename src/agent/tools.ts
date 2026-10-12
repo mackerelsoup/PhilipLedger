@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Db } from "../db/index.js";
-import { getBalance } from "../ledger/index.js";
+import { accountExists, findAccounts, getBalance } from "../ledger/index.js";
 import { propose } from "../pending/index.js";
 import { getHistory } from "../transactions/index.js";
 
@@ -43,13 +43,7 @@ const TOOLS = {
       "Find recipient accounts by (part of) a username. Returns all candidates; if more than one, ask the user to choose.",
     args: z.object({ query: z.string().trim().min(1).max(50) }).strict(),
     run: (c: ToolContext, a: { query: string }) =>
-      success({
-        candidates: c.db
-          .prepare(
-            "SELECT a.id AS accountId, u.username FROM accounts a JOIN users u ON u.id = a.user_id WHERE a.id <> ? AND instr(lower(u.username), lower(?)) > 0 ORDER BY u.username",
-          )
-          .all(c.accountId, a.query),
-      }),
+      success({ candidates: findAccounts(c.db, a.query, c.accountId) }),
   },
   propose_transfer: {
     description:
@@ -57,8 +51,7 @@ const TOOLS = {
     args: z.object({ toAccountId: Id, amountCents: Id }).strict(),
     run: (c: ToolContext, a: { toAccountId: number; amountCents: number }) => {
       if (a.toAccountId === c.accountId) return failure("same_account");
-      const exists = c.db.prepare("SELECT 1 FROM accounts WHERE id = ?").get(a.toAccountId);
-      if (!exists) return failure("unknown_account");
+      if (!accountExists(c.db, a.toAccountId)) return failure("unknown_account");
       const p = propose(c.db, { sessionId: c.sessionId, accountId: c.accountId, ...a });
       return success({ pendingId: p.id, replacedEarlierRequest: p.replaced, status: "awaiting_user_confirmation" });
     },

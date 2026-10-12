@@ -12,6 +12,19 @@ export function getBalance(db: Db, accountId: number): number | undefined {
   return row?.b;
 }
 
+export function accountExists(db: Db, accountId: number): boolean {
+  return getBalance(db, accountId) !== undefined;
+}
+
+/** Accounts whose owner's username contains `query` (case-insensitive), excluding one account. */
+export function findAccounts(db: Db, query: string, excludeAccountId: number): { accountId: number; username: string }[] {
+  return db
+    .prepare(
+      "SELECT a.id AS accountId, u.username FROM accounts a JOIN users u ON u.id = a.user_id WHERE a.id <> ? AND instr(lower(u.username), lower(?)) > 0 ORDER BY u.username",
+    )
+    .all(excludeAccountId, query) as { accountId: number; username: string }[];
+}
+
 /**
  * Atomic debit + credit + transaction row. Replaying an idempotency key returns the original
  * transaction without moving money again (the original wins even if the replay's fields differ).
