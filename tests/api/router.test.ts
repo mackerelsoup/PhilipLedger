@@ -56,3 +56,42 @@ describe("api router", () => {
     expect(await post("/pending/p1/confirm", 1)).toMatchObject({ status: 409, body: { ok: false, reason: "insufficient_funds" } });
   });
 });
+
+describe("ui routes", () => {
+  it("serves the page, logs in, and chat returns the pending op for the Confirm button", async () => {
+    const { accountOfSession } = await import("../../src/auth/index.js");
+    const { bearer } = await import("../../src/api/router.js");
+    const db = openDb();
+    seed(db);
+    const llm = {
+      baseUrl: "http://x",
+      apiKey: "k",
+      model: "m",
+      sleep: async () => {},
+      fetch: (async () => {
+        const n = (llm as { n?: number }).n ?? 0;
+        (llm as { n?: number }).n = n + 1;
+        const message = n === 0
+          ? { tool_calls: [{ id: "c", function: { name: "propose_transfer", arguments: '{"toAccountId":2,"amountCents":500}' } }] }
+          : { content: "Confirm?" };
+        return new Response(JSON.stringify({ choices: [{ message }] }));
+      }) as typeof fetch,
+    };
+    server = createApi(db, (req) => accountOfSession(db, bearer(req)), llm);
+    await new Promise<void>((r) => server.listen(0, r));
+    const base = `http://localhost:${(server.address() as { port: number }).port}`;
+    const json = (path: string, body: object, token?: string) =>
+      fetch(base + path, { method: "POST", headers: token ? { authorization: `Bearer ${token}` } : {}, body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+    expect((await fetch(base + "/")).headers.get("content-type")).toContain("text/html");
+    expect((await json("/login", { username: "alice", password: "wrong" })).status).toBe(401);
+    expect((await json("/chat", { text: "hi" })).status).toBe(401);
+    const { body: login } = await json("/login", { username: "alice", password: "demo1234" });
+    const chatRes = await json("/chat", { text: "send bob 5" }, login.sessionId);
+    expect(chatRes.body).toMatchObject({ ok: true, reply: "Confirm?", pending: { to: "bob", amountCents: 500 } });
+    expect(getBalance(db, 1)).toBe(100_000);
+    const done = await json(`/pending/${chatRes.body.pending.id}/confirm`, {}, login.sessionId);
+    expect(done.body).toMatchObject({ ok: true });
+    expect(getBalance(db, 2)).toBe(100_500);
+  });
+});

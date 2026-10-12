@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic Ledger</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #fff; --text: #1c2330; --muted: #6b7482; --line: #dde1e8;
+    --accent: #2f6fed; --accent-text: #fff; --user: #2f6fed; --user-text: #fff; --bot: #eef0f4;
+    --ok: #1a7f4b; --err: #b3261e; --code: #e6e9ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1b1f27; --text: #e6e9ef; --muted: #8b94a3; --line: #2c323d;
+      --accent: #5b8cf5; --accent-text: #0b1020; --user: #3a63c4; --user-text: #fff; --bot: #262b35;
+      --ok: #4cc38a; --err: #ff8a80; --code: #323946;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 16px; height: 100dvh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 4px 0 12px; }
+  h1 { font-size: 1.15rem; margin: 0; }
+  h1 span { color: var(--accent); }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; background: var(--accent); color: var(--accent-text); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  button.danger { background: transparent; color: var(--err); border: 1px solid var(--err); }
+  input { font: inherit; flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  form { display: flex; gap: 8px; }
+  #login { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; flex-wrap: wrap; }
+  #login input { flex-basis: 40%; }
+  #hint { width: 100%; margin: 0; color: var(--muted); font-size: .85rem; }
+  #app { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+  #log { flex: 1; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 85%; padding: 8px 12px; border-radius: 14px; background: var(--bot); overflow-wrap: anywhere; }
+  .msg.user { align-self: flex-end; background: var(--user); color: var(--user-text); white-space: pre-wrap; }
+  .msg.err { color: var(--err); }
+  .msg.ok { color: var(--ok); }
+  .msg > :first-child { margin-top: 0; } .msg > :last-child { margin-bottom: 0; }
+  .msg p, .msg ul, .msg ol { margin: .4em 0; }
+  .msg code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .msg pre { background: var(--code); padding: 8px; border-radius: 8px; overflow-x: auto; }
+  .msg pre code { padding: 0; background: none; }
+  .msg table { border-collapse: collapse; margin: .4em 0; display: block; overflow-x: auto; }
+  .msg th, .msg td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+  .msg a { color: inherit; }
+  .card { align-self: stretch; border: 1px solid var(--accent); border-radius: 12px; padding: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .card strong { flex: 1 1 100%; }
+  .typing { display: flex; gap: 4px; padding: 12px; }
+  .typing i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite ease-in-out; }
+  .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+  @media (prefers-reduced-motion: reduce) { .typing i { animation: none; opacity: .6; } }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Agentic <span>Ledger</span></h1>
+    <button id="logout" class="ghost" hidden>Log out</button>
+  </header>
+
+  <form id="login">
+    <input id="u" placeholder="Username" autocomplete="username" required>
+    <input id="p" type="password" placeholder="Password" autocomplete="current-password" required>
+    <button>Log in</button>
+    <p id="hint">Demo users: alice, bob, alan.</p>
+  </form>
+
+  <div id="app" hidden>
+    <div id="log" aria-live="polite"></div>
+    <form id="chat">
+      <input id="text" placeholder="e.g. send 10 dollars to bob" maxlength="500" autocomplete="off" required>
+      <button id="send">Send</button>
+    </form>
+  </div>
+</div>
+
+<script>
+let token = sessionStorage.getItem("token");
+const $ = (id) => document.getElementById(id);
+const log = $("log");
+const dollars = (c) => "SGD " + (c / 100).toFixed(2);
+const scroll = () => (log.scrollTop = log.scrollHeight);
+
+// Model output is untrusted: markdown -> HTML -> sanitize. Falls back to plain text if the CDN libs didn't load.
+function render(el, md) {
+  if (window.marked && window.DOMPurify) el.innerHTML = DOMPurify.sanitize(marked.parse(md, { gfm: true, breaks: true }));
+  else el.textContent = md;
+}
+
+function add(text, cls = "", markdown = false) {
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  markdown ? render(d, text) : (d.textContent = text);
+  log.append(d);
+  scroll();
+}
+
+function typing() {
+  const d = document.createElement("div");
+  d.className = "msg typing";
+  d.setAttribute("role", "status");
+  d.setAttribute("aria-label", "Assistant is thinking");
+  d.innerHTML = "<i></i><i></i><i></i>";
+  log.append(d);
+  scroll();
+  return d;
+}
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(token && { authorization: "Bearer " + token }) },
+    body: JSON.stringify(body ?? {}),
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+function show() {
+  $("login").hidden = !!token;
+  $("app").hidden = !token;
+  $("logout").hidden = !token;
+  if (token) $("text").focus();
+}
+
+// Confirm/Reject are buttons only; typed replies never confirm (ADR-0004).
+function card(p) {
+  const el = document.createElement("div");
+  el.className = "card";
+  const title = document.createElement("strong");
+  title.textContent = `Send ${dollars(p.amountCents)} to ${p.to}?`;
+  el.append(title);
+  for (const action of ["confirm", "reject"]) {
+    const b = document.createElement("button");
+    b.textContent = action[0].toUpperCase() + action.slice(1);
+    if (action === "reject") b.className = "danger";
+    b.onclick = async () => {
+      el.querySelectorAll("button").forEach((x) => (x.disabled = true));
+      const { body } = await api(`/pending/${p.id}/${action}`);
+      el.remove();
+      if (action === "reject" && body.ok) add("Cancelled.");
+      else if (body.ok) add(`Done: ${dollars(body.transaction.amountCents)} sent${body.replayed ? " (already executed)" : ""}.`, "ok");
+      else add({ insufficient_funds: "Insufficient funds.", expired: "That request expired.", not_found: "That request is no longer pending." }[body.reason] ?? "Failed: " + body.reason, "err");
+    };
+    el.append(b);
+  }
+  log.append(el);
+  scroll();
+}
+
+$("login").onsubmit = async (e) => {
+  e.preventDefault();
+  const { body } = await api("/login", { username: $("u").value, password: $("p").value });
+  if (!body.ok) return alert("Invalid username or password");
+  token = body.sessionId;
+  sessionStorage.setItem("token", token);
+  show();
+};
+
+$("logout").onclick = () => {
+  sessionStorage.removeItem("token");
+  token = null;
+  log.replaceChildren();
+  show();
+};
+
+$("chat").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $("text").value;
+  $("text").value = "";
+  add(text, "user");
+  log.querySelectorAll(".card").forEach((c) => c.remove()); // a new message may replace the pending op
+  $("send").disabled = $("text").disabled = true;
+  const dots = typing();
+  let status, body;
+  try {
+    ({ status, body } = await api("/chat", { text }));
+  } catch {
+    status = 0; body = { ok: false };
+  } finally {
+    dots.remove();
+    $("send").disabled = $("text").disabled = false;
+    $("text").focus();
+  }
+  if (status === 401) { sessionStorage.removeItem("token"); token = null; return show(); }
+  if (!body.ok) return add(status === 429 ? "Too many requests, please wait a moment." : "The assistant is unavailable, nothing was changed. Try again.", "err");
+  add(body.reply, "", true);
+  if (body.pending) card(body.pending);
+};
+
+show();
+</script>
+</body>
+</html>
