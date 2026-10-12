@@ -52,6 +52,15 @@ describe("tools", () => {
     expect((found.data.candidates as { username: string }[]).map((c) => c.username)).toEqual(["bob"]); // excludes self, case-insensitive
   });
 
+  it("history rows name the counterparty", () => {
+    const { db, ctx } = setup();
+    db.prepare("INSERT INTO transactions (from_account_id, to_account_id, amount_cents, idempotency_key) VALUES (1, 2, 100, 'a'), (3, 1, 200, 'b')").run();
+    const r = runTool(ctx, "get_history", "{}").result;
+    if (!r.ok) throw new Error("history failed");
+    const rows = r.data.transactions as { direction: string; counterparty: string }[];
+    expect(rows.map((t) => [t.direction, t.counterparty])).toEqual([["received", "alan"], ["sent", "bob"]]);
+  });
+
   it("history timestamps are shown in Singapore time", () => {
     const { db, ctx } = setup();
     db.prepare("INSERT INTO transactions (from_account_id, to_account_id, amount_cents, idempotency_key, created_at) VALUES (1, 2, 100, 'k', '2026-01-01T16:30:00.000Z')").run();

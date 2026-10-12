@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import { chat, type LlmDeps } from "../agent/llm.js";
 import { login } from "../auth/index.js";
 import type { Db } from "../db/index.js";
+import { getUsername } from "../ledger/index.js";
 import { getActive } from "../pending/index.js";
 import { confirm, reject } from "./confirm.js";
 
@@ -74,7 +75,7 @@ export function createApi(db: Db, accountOf: (req: IncomingMessage) => number | 
     if (!r.ok) return send(STATUS[r.reason] ?? 500, r);
     histories.set(sessionId, r.history.slice(-40));
     const p = getActive(db, sessionId);
-    const to = p && (db.prepare("SELECT u.username FROM accounts a JOIN users u ON u.id = a.user_id WHERE a.id = ?").get(p.toAccountId) as { username: string });
-    send(200, { ok: true, reply: r.reply, pending: p && { id: p.id, to: to?.username, amountCents: p.amountCents } });
+    const to = p && getUsername(db, p.toAccountId);
+    send(200, { ok: true, reply: r.reply, pending: p && { id: p.id, to, amountCents: p.amountCents } });
   });
 }

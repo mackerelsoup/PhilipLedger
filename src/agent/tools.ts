@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Db } from "../db/index.js";
-import { accountExists, findAccounts, getBalance } from "../ledger/index.js";
+import { accountExists, findAccounts, getBalance, getUsername } from "../ledger/index.js";
 import { propose } from "../pending/index.js";
 import { getHistory } from "../transactions/index.js";
 
@@ -38,12 +38,13 @@ const TOOLS = {
     },
   },
   get_history: {
-    description: "Get the user's recent transactions, newest first.",
+    description: "Get the user's recent transactions, newest first. Each row has direction (sent/received) and counterparty (the other person's username).",
     args: z.object({ limit: z.number().int().min(1).max(50).optional() }).strict(),
     run: (c: ToolContext, a: { limit?: number }) =>
       success({
         transactions: getHistory(c.db, c.accountId, a.limit ?? 10).map((t) => ({
           ...t,
+          counterparty: getUsername(c.db, t.fromAccountId === c.accountId ? t.toAccountId : t.fromAccountId) ?? "unknown",
           createdAt: toSgt(t.createdAt),
           amount: sgd(t.amountCents),
           direction: t.fromAccountId === c.accountId ? "sent" : "received",

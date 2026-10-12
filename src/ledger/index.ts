@@ -16,6 +16,13 @@ export function accountExists(db: Db, accountId: number): boolean {
   return getBalance(db, accountId) !== undefined;
 }
 
+export function getUsername(db: Db, accountId: number): string | undefined {
+  const row = db
+    .prepare("SELECT u.username FROM accounts a JOIN users u ON u.id = a.user_id WHERE a.id = ?")
+    .get(accountId) as { username: string } | undefined;
+  return row?.username;
+}
+
 /** Accounts whose owner's username contains `query` (case-insensitive), excluding one account. */
 export function findAccounts(db: Db, query: string, excludeAccountId: number): { accountId: number; username: string }[] {
   return db
